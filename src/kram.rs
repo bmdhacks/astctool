@@ -42,15 +42,28 @@ pub fn ensure_kram() -> Result<PathBuf> {
 
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("create cache dir {}", dir.display()))?;
-    let tmp = dir.join(format!("{}.{}.tmp", exe_name(), std::process::id()));
-    std::fs::write(&tmp, KRAM_BYTES).with_context(|| format!("write {}", tmp.display()))?;
+    // Write to a unique temp file then atomically move into place, so parallel
+    // tests/processes don't clobber each other.
+    let mut tmp = tempfile::Builder::new()
+        .prefix("kram-")
+        .tempfile_in(&dir)
+        .with_context(|| format!("create temp file in {}", dir.display()))?;
+    use std::io::Write as _;
+    tmp.write_all(KRAM_BYTES).context("write kram bytes")?;
+    tmp.flush().context("flush kram bytes")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o755))
             .context("chmod kram")?;
     }
-    std::fs::rename(&tmp, &path).context("install kram")?;
+    if let Err(e) = tmp.persist(&path) {
+        // Losing the race to another writer is fine as long as the file is there.
+        if !path.is_file() {
+            return Err(anyhow::Error::new(e.error))
+                .with_context(|| format!("install kram to {}", path.display()));
+        }
+    }
     Ok(path)
 }
 
