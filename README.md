@@ -8,6 +8,8 @@ are already set to 6x6 thorough.
 
 ## Install
 
+Grab the installer for your OS from the Releases page.
+
 - Windows: run the installer. If SmartScreen complains, More info -> Run anyway.
 - macOS: open the dmg, drag to Applications. First launch: right-click the app,
   Open, then Open again. It's unsigned, so macOS is just being annoying.
