@@ -37,6 +37,10 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
 
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build kram
         shell: bash
         run: ./scripts/build-kram.sh

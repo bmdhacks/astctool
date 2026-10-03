@@ -33,10 +33,13 @@ case "$os" in
     ;;
 
   MINGW*|MSYS*|CYGWIN*)
-    cmake -S "$kram_src" -B "$root/build/kram-win" \
-      -G "Visual Studio 17 2022" -A x64 -T ClangCL -DATE=OFF
+    # Ninja + clang-cl. The Visual Studio generator name keeps changing across
+    # runner images; this combo just needs the MSVC env (set up by the caller).
+    cmake -S "$kram_src" -B "$root/build/kram-win" -G Ninja \
+      -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
+      -DCMAKE_BUILD_TYPE=Release -DATE=OFF
     cmake --build "$root/build/kram-win" --config Release --target kram
-    cp "$root/build/kram-win/kramc/Release/kram.exe" "$out/kram.exe"
+    cp "$root/build/kram-win/kramc/kram.exe" "$out/kram.exe"
     ;;
 
   *)

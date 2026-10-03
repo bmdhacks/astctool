@@ -19,6 +19,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: lukka/get-cmake@latest
 
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build kram
         shell: bash
         run: ./scripts/build-kram.sh
