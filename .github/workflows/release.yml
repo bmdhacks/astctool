@@ -33,7 +33,6 @@ jobs:
         run: cargo install cargo-packager --locked
 
       - name: Build and package
-        shell: bash
         run: |
           cargo build --release
           cargo packager --release --formats nsis
@@ -115,14 +114,16 @@ jobs:
         run: |
           DMG=$(ls target/release/*.dmg | head -1)
           echo "mounting $DMG"
-          MOUNT=$(hdiutil attach "$DMG" -nobrowse -readonly | tail -1 | awk '{print $3}')
-          APP=$(ls -d "$MOUNT"/*.app | head -1)
+          MOUNTPOINT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNTPOINT"
+          APP=$(ls -d "$MOUNTPOINT"/*.app | head -1)
           BIN=$(ls "$APP/Contents/MacOS" | head -1)
           rm -f e2e-dmg.tar.zst report.json astctool.log
           "$APP/Contents/MacOS/$BIN" --cli -i tests/fixtures/pack -o e2e-dmg.tar.zst --jobs 2
           grep -q '"succeeded": 2' report.json
           test -s e2e-dmg.tar.zst
-          hdiutil detach "$MOUNT"
+          hdiutil detach "$MOUNTPOINT"
+          rmdir "$MOUNTPOINT"
           echo "packaged app ok"
 
       - uses: actions/upload-artifact@v4
