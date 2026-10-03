@@ -47,10 +47,24 @@ jobs:
           grep -q '"failed_count": 0' report.json
           test -s e2e-pack.tar.zst
 
+      - name: Verify installed installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/*setup.exe | Select-Object -First 1
+          Write-Host "installing $($installer.FullName)"
+          Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait
+          $bin = Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter astctool.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $bin) { throw "installed astctool.exe not found under LOCALAPPDATA" }
+          Remove-Item e2e-inst.tar.zst, report.json, astctool.log -ErrorAction SilentlyContinue
+          & $bin.FullName --cli -i tests/fixtures/pack -o e2e-inst.tar.zst --jobs 2
+          if (-not (Test-Path e2e-inst.tar.zst)) { throw "no archive from installed app" }
+          if ((Get-Content report.json -Raw) -notmatch '"succeeded": 2') { throw "unexpected report from installed app" }
+          Write-Host "installed app ok"
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: target/release/*.exe
+          path: target/release/*setup.exe
 
   macos:
     runs-on: macos-14
@@ -96,6 +110,21 @@ jobs:
           grep -q '"failed_count": 0' report.json
           test -s e2e-pack.tar.zst
 
+      - name: Verify packaged dmg
+        shell: bash
+        run: |
+          DMG=$(ls target/release/*.dmg | head -1)
+          echo "mounting $DMG"
+          MOUNT=$(hdiutil attach "$DMG" -nobrowse -readonly | tail -1 | awk '{print $3}')
+          APP=$(ls -d "$MOUNT"/*.app | head -1)
+          BIN=$(ls "$APP/Contents/MacOS" | head -1)
+          rm -f e2e-dmg.tar.zst report.json astctool.log
+          "$APP/Contents/MacOS/$BIN" --cli -i tests/fixtures/pack -o e2e-dmg.tar.zst --jobs 2
+          grep -q '"succeeded": 2' report.json
+          test -s e2e-dmg.tar.zst
+          hdiutil detach "$MOUNT"
+          echo "packaged app ok"
+
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
@@ -110,8 +139,14 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List assets
-        run: ls -la dist
+      - name: Rename assets
+        shell: bash
+        run: |
+          cd dist
+          ver="${GITHUB_REF_NAME#v}"
+          for f in *.exe; do [ -e "$f" ] && mv "$f" "astctool_${ver}_windows-x64-setup.exe"; done
+          for f in *.dmg; do [ -e "$f" ] && mv "$f" "astctool_${ver}_macos-universal.dmg"; done
+          ls -la
 
       - name: Prune interim releases
         env:
