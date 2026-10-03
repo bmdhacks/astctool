@@ -1,0 +1,10 @@
+astctool bundles a prebuilt copy of kram as an embedded resource.
+
+kram
+Copyright (c) 2020-2021 Alec Miller
+Licensed under the MIT License. Full text in vendor/kram/LICENSE.
+
+astctool does not link against kram; it extracts the embedded executable at
+runtime and drives it as a subprocess. kram's own license therefore applies to
+that embedded binary, and this project's MIT license applies to the surrounding
+application code.

@@ -1,0 +1,22 @@
+[package]
+name = "astctool"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+dirs = "7.0.0"
+eframe = "0.36.2"
+egui = "0.36.2"
+egui_extras = "0.36.2"
+env_logger = "0.11.11"
+log = "0.4.34"
+regex = "1.13.1"
+rfd = "0.17.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+tar = "0.4.46"
+tempfile = "3.27.0"
+zip = "8.6.0"
+zstd = "0.14.0"

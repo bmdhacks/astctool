@@ -1,0 +1,5 @@
+/target
+/build
+/vendor/kram/bin
+*.log
+.DS_Store
