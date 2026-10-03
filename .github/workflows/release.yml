@@ -1,0 +1,133 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: lukka/get-cmake@latest
+
+      - name: Build kram
+        shell: bash
+        run: ./scripts/build-kram.sh
+
+      - name: Test
+        run: cargo test --all
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build and package
+        shell: bash
+        run: |
+          cargo build --release
+          cargo packager --release --formats nsis
+
+      - name: E2E on release binary
+        shell: bash
+        run: |
+          rm -f e2e-pack.tar.zst report.json astctool.log
+          target/release/astctool.exe --cli -i tests/fixtures/pack -o e2e-pack.tar.zst --jobs 2
+          grep -q '"succeeded": 2' report.json
+          grep -q '"failed_count": 0' report.json
+          test -s e2e-pack.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: target/release/*.exe
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+      - uses: lukka/get-cmake@latest
+
+      - name: Build kram (universal)
+        shell: bash
+        run: ./scripts/build-kram.sh
+
+      - name: Test
+        run: cargo test --all
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Build universal and package
+        shell: bash
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          lipo -create \
+            target/aarch64-apple-darwin/release/astctool \
+            target/x86_64-apple-darwin/release/astctool \
+            -output target/release/astctool
+          cargo packager --release --formats dmg
+
+      - name: E2E on release binary
+        shell: bash
+        run: |
+          rm -f e2e-pack.tar.zst report.json astctool.log
+          target/release/astctool --cli -i tests/fixtures/pack -o e2e-pack.tar.zst --jobs 2
+          grep -q '"succeeded": 2' report.json
+          grep -q '"failed_count": 0' report.json
+          test -s e2e-pack.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: target/release/*.dmg
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la dist
+
+      - name: Prune interim releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --json tagName -q '.[].tagName' | while read -r t; do
+            [ -z "$t" ] && continue
+            if [ "$t" != "${GITHUB_REF_NAME}" ]; then
+              echo "deleting release $t"
+              gh release delete "$t" -y --cleanup-tag || true
+            fi
+          done
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: dist/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true

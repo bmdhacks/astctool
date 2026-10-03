@@ -42,7 +42,7 @@ pub fn ensure_kram() -> Result<PathBuf> {
 
     std::fs::create_dir_all(&dir)
         .with_context(|| format!("create cache dir {}", dir.display()))?;
-    let tmp = dir.join(format!("{}.tmp", exe_name()));
+    let tmp = dir.join(format!("{}.{}.tmp", exe_name(), std::process::id()));
     std::fs::write(&tmp, KRAM_BYTES).with_context(|| format!("write {}", tmp.display()))?;
     #[cfg(unix)]
     {

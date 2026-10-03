@@ -2,13 +2,19 @@
 name = "astctool"
 version = "0.1.0"
 edition = "2024"
+description = "Repackage a texture folder into an ARMSX2 ASTC KTX1 tar.zst pack"
+license = "MIT"
+
+[package.metadata.packager]
+product-name = "ASTC Texture Pack Builder"
+identifier = "com.bmdhacks.astctool"
+category = "Utility"
+icons = ["icons/icon.png"]
 
 [dependencies]
 anyhow = "1.0.104"
 dirs = "7.0.0"
 eframe = "0.36.2"
-egui = "0.36.2"
-egui_extras = "0.36.2"
 env_logger = "0.11.11"
 log = "0.4.34"
 regex = "1.13.1"
@@ -21,3 +27,6 @@ tempfile = "3.27.0"
 unicode-normalization = "0.1.25"
 zip = "8.6.0"
 zstd = "0.14.0"
+
+[profile.release]
+strip = true

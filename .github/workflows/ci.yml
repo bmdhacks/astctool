@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: lukka/get-cmake@latest
+
+      - name: Install Linux GUI deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev
+
+      - name: Build kram
+        shell: bash
+        run: ./scripts/build-kram.sh
+
+      - name: Test
+        run: cargo test --all
+
+      - name: Install cargo-packager
+        if: runner.os != 'Linux'
+        run: cargo install cargo-packager --locked
+
+      - name: Build release binary
+        if: runner.os != 'macOS'
+        run: cargo build --release
+
+      - name: Build universal release binary (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          lipo -create \
+            target/aarch64-apple-darwin/release/astctool \
+            target/x86_64-apple-darwin/release/astctool \
+            -output target/release/astctool
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: cargo packager --release --formats nsis
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: cargo packager --release --formats dmg
+
+      - name: E2E on release binary
+        shell: bash
+        run: |
+          BIN=target/release/astctool
+          [ "${{ runner.os }}" = "Windows" ] && BIN=target/release/astctool.exe
+          rm -f e2e-pack.tar.zst report.json astctool.log
+          "$BIN" --cli -i tests/fixtures/pack -o e2e-pack.tar.zst --jobs 2
+          grep -q '"succeeded": 2' report.json
+          grep -q '"failed_count": 0' report.json
+          test -s e2e-pack.tar.zst
+          echo "e2e ok"

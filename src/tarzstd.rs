@@ -140,11 +140,10 @@ fn new_header(entry_type: EntryType, mode: u32) -> Header {
 fn append_dir(builder: &mut Builder<impl Write>, path: &str) -> Result<()> {
     let mut h = new_header(EntryType::Directory, 0o755);
     h.set_size(0);
-    h.set_path(path)
-        .with_context(|| format!("tar path {path}"))?;
-    h.set_cksum();
+    // append_data handles >100-byte paths via a GNU 'L' record, which the
+    // consumer contract accepts (pax does not).
     builder
-        .append(&h, io::empty())
+        .append_data(&mut h, path, io::empty())
         .with_context(|| format!("append dir {path}"))?;
     Ok(())
 }
@@ -154,12 +153,9 @@ fn append_file(builder: &mut Builder<impl Write>, disk: &Path, path: &str) -> Re
     let len = meta.len();
     let mut h = new_header(EntryType::Regular, 0o644);
     h.set_size(len);
-    h.set_path(path)
-        .with_context(|| format!("tar path {path}"))?;
-    h.set_cksum();
     let f = File::open(disk).with_context(|| format!("open {}", disk.display()))?;
     builder
-        .append(&h, f)
+        .append_data(&mut h, path, f)
         .with_context(|| format!("append file {path}"))?;
     Ok(len)
 }
@@ -184,5 +180,19 @@ mod tests {
         let summary = contract::validate_tar_zst(&out, Some(2)).unwrap();
         assert_eq!(summary.ktx_files, 2);
         assert!(summary.decompressed_size > 0);
+    }
+
+    #[test]
+    fn long_paths_use_gnu_longname_not_pax() {
+        let tmp = tempfile::tempdir().unwrap();
+        let rep = tmp.path().join("replacements");
+        fs::create_dir_all(&rep).unwrap();
+        let long = "a".repeat(150) + ".ktx";
+        fs::write(rep.join(&long), b"AAAA").unwrap();
+
+        let out = tmp.path().join("pack.tar.zst");
+        write_archive(&out, &rep).unwrap();
+        let summary = contract::validate_tar_zst(&out, Some(1)).unwrap();
+        assert_eq!(summary.ktx_files, 1);
     }
 }
