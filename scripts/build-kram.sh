@@ -22,7 +22,7 @@ case "$os" in
     # Universal: build both slices, then lipo.
     for a in arm64 x86_64; do
       cmake -S "$kram_src" -B "$root/build/kram-mac-$a" \
-        -DCMAKE_BUILD_TYPE=Release -DATE=OFF \
+        -DCMAKE_BUILD_TYPE=Release -DATE=OFF -DKRAM_BUILD_EXTRAS=OFF \
         -DCMAKE_OSX_ARCHITECTURES=$a
       cmake --build "$root/build/kram-mac-$a" --config Release --target kram
     done
