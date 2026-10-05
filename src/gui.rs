@@ -34,6 +34,7 @@ struct App {
     format_idx: usize,
     quality_idx: usize,
     jobs: usize,
+    alpha_exact: bool,
     status: Status,
     phase: String,
     done: usize,
@@ -60,6 +61,7 @@ impl App {
             jobs: std::thread::available_parallelism()
                 .map(|n| n.get())
                 .unwrap_or(4),
+            alpha_exact: false,
             status: Status::Idle,
             phase: String::new(),
             done: 0,
@@ -96,6 +98,7 @@ impl App {
             format: FORMATS[self.format_idx].to_string(),
             quality: QUALITY_PRESETS[self.quality_idx].1,
             jobs: self.jobs,
+            alpha_exact: self.alpha_exact,
         };
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
@@ -253,6 +256,11 @@ impl eframe::App for App {
 
                 ui.label("Parallel jobs");
                 ui.add(egui::Slider::new(&mut self.jobs, 1..=64));
+                ui.end_row();
+
+                ui.label("Exact alpha");
+                ui.checkbox(&mut self.alpha_exact, "Keep PS2 opaque alpha (0x80) exact")
+                    .on_hover_text("Re-encodes blocks whose flat alpha would decode a few steps off 0x80. Costs some colour on those blocks.");
                 ui.end_row();
             });
 

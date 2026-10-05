@@ -18,6 +18,7 @@ fn opts(input: PathBuf, output: PathBuf) -> PipelineOptions {
         format: "astc6x6".into(),
         quality: 98,
         jobs: 2,
+        alpha_exact: false,
     }
 }
 
@@ -81,12 +82,14 @@ fn decoded_alpha_levels(kram: &std::path::Path, ktx: &std::path::Path) -> Vec<Ve
 
 #[test]
 fn flat_ps2_opaque_alpha_decodes_exactly() {
-    // 96x96 noisy RGB with every alpha 0x80 (PS2 opaque). Without the
-    // alpha-exact pass about 85% of these texels decode as 129..139.
+    // 96x96 noisy RGB with every alpha 0x80 (PS2 opaque), built with
+    // --alpha-exact. Without it about 85% of these texels decode as 129..139.
     let tmp = tempfile::tempdir().unwrap();
     let out = tmp.path().join("pack.tar.zst");
     let mut progress = |_p: Progress| {};
-    let rep = pipeline::run(&opts(fixture("alpha"), out.clone()), &mut progress).unwrap();
+    let mut o = opts(fixture("alpha"), out.clone());
+    o.alpha_exact = true;
+    let rep = pipeline::run(&o, &mut progress).unwrap();
     assert_eq!(rep.succeeded, 1, "failures: {:?}", rep.failures);
 
     let unpacked = tmp.path().join("unpacked");

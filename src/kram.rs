@@ -92,6 +92,7 @@ pub fn build_argv(
     format: &str,
     quality: i32,
     threads: usize,
+    alpha_exact: bool,
 ) -> Vec<OsString> {
     let mut a: Vec<OsString> = Vec::new();
     a.push("encode".into());
@@ -116,9 +117,11 @@ pub fn build_argv(
         a.push(quality.to_string().into());
     }
     // PS2 textures use alpha 0x80 for opaque, which ASTC endpoints rarely hit
-    // exactly; have kram re-encode flat and two-level alpha blocks that decode
-    // off by a few steps.
-    a.push("-alphaexact".into());
+    // exactly; on request, kram re-encodes flat and two-level alpha blocks that
+    // decode off by a few steps, at some cost in colour on those blocks.
+    if alpha_exact {
+        a.push("-alphaexact".into());
+    }
     a.push("-j".into());
     a.push(threads.max(1).to_string().into());
     a.push("-o".into());
@@ -183,6 +186,7 @@ mod tests {
             "astc6x6",
             98,
             1,
+            false,
         );
         let s: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(s.contains(&"-mip".to_string()));
@@ -198,9 +202,25 @@ mod tests {
             "astc6x6",
             98,
             1,
+            false,
         );
         let s: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(s.contains(&"-mipcount".to_string()));
+        assert!(!s.contains(&"-alphaexact".to_string()));
+    }
+
+    #[test]
+    fn argv_asks_for_exact_alpha_only_when_told() {
+        let a = build_argv(
+            Path::new("base.png"),
+            &[],
+            Path::new("out.ktx"),
+            "astc6x6",
+            98,
+            1,
+            true,
+        );
+        let s: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(s.contains(&"-alphaexact".to_string()));
     }
 }

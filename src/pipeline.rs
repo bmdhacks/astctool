@@ -21,6 +21,9 @@ pub struct PipelineOptions {
     pub quality: i32,
     /// How many kram processes to run at once.
     pub jobs: usize,
+    /// Re-encode blocks whose flat or two-level alpha (e.g. PS2 opaque 0x80)
+    /// decodes off, at some cost in colour on those blocks.
+    pub alpha_exact: bool,
 }
 
 impl PipelineOptions {
@@ -90,6 +93,7 @@ pub struct Report {
     pub output: String,
     pub format: String,
     pub quality: i32,
+    pub alpha_exact: bool,
     pub jobs: usize,
     pub threads_per_process: usize,
     pub total_textures: usize,
@@ -194,6 +198,7 @@ pub fn run(opts: &PipelineOptions, progress: &mut dyn FnMut(Progress)) -> Result
             &opts.format,
             opts.quality,
             threads_per,
+            opts.alpha_exact,
         );
         jobs.push(Job {
             out,
@@ -323,6 +328,7 @@ pub fn run(opts: &PipelineOptions, progress: &mut dyn FnMut(Progress)) -> Result
         output: out_path.display().to_string(),
         format: opts.format.clone(),
         quality: opts.quality,
+        alpha_exact: opts.alpha_exact,
         jobs: concurrency,
         threads_per_process: threads_per,
         total_textures: total,

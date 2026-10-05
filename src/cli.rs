@@ -9,10 +9,11 @@ use crate::{report, DEFAULT_FORMAT, DEFAULT_QUALITY, FORMATS};
 fn usage() -> String {
     format!(
         "astctool --cli -i <folder-or-zip> [-o out.tar.zst]\n\
-         \x20   [--format {}] [--quality {}] [--jobs N]\n\
+         \x20   [--format {}] [--quality {}] [--jobs N] [--alpha-exact]\n\
          \n\
          input:  a folder of .png/.dds/.ktx/.ktx2, or a .zip of one\n\
-         output: <name>.tar.zst plus report.json and astctool.log\n",
+         output: <name>.tar.zst plus report.json and astctool.log\n\
+         --alpha-exact: keep flat PS2 alpha (0x80 = opaque) exact, at some colour cost\n",
         FORMATS.join("|"),
         DEFAULT_QUALITY
     )
@@ -31,6 +32,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut format = DEFAULT_FORMAT.to_string();
     let mut quality = DEFAULT_QUALITY;
     let mut jobs = default_jobs();
+    let mut alpha_exact = false;
 
     let mut it = args.iter().peekable();
     while let Some(arg) = it.next() {
@@ -69,6 +71,7 @@ pub fn run(args: &[String]) -> i32 {
                 Some(j) if j >= 1 => jobs = j,
                 _ => return fail("--jobs needs a positive integer"),
             },
+            "--alpha-exact" => alpha_exact = true,
             other => return fail(&format!("unknown argument {other:?}")),
         }
     }
@@ -83,6 +86,7 @@ pub fn run(args: &[String]) -> i32 {
         format,
         quality,
         jobs,
+        alpha_exact,
     };
 
     let mut last_bucket = usize::MAX;
