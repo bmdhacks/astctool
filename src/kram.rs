@@ -115,6 +115,10 @@ pub fn build_argv(
         a.push("-quality".into());
         a.push(quality.to_string().into());
     }
+    // PS2 textures use alpha 0x80 for opaque, which ASTC endpoints rarely hit
+    // exactly; have kram re-encode flat and two-level alpha blocks that decode
+    // off by a few steps.
+    a.push("-alphaexact".into());
     a.push("-j".into());
     a.push(threads.max(1).to_string().into());
     a.push("-o".into());
@@ -197,5 +201,6 @@ mod tests {
         );
         let s: Vec<String> = a.iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(s.contains(&"-mipcount".to_string()));
+        assert!(s.contains(&"-alphaexact".to_string()));
     }
 }
