@@ -1,6 +1,6 @@
 [package]
 name = "astctool"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Repackage a texture folder into an ARMSX2 ASTC KTX1 tar.zst pack"
 license = "MIT"
