@@ -21,7 +21,10 @@ already works with PCSX2. Input formats are the ones kram reads:
 `.png .dds .ktx .ktx2`. Anything else is skipped and counted in the report.
 
 Output goes next to the input as `<name>.tar.zst`, plus `report.json` and
-`astctool.log`. If a few textures fail, the build keeps going and tells you
+`astctool.log`. If the input's name doesn't already carry the game's serial but
+one of its folders does (say `SLUS-21447/replacements/`), the serial goes on the
+front of the name, `SLUS-21447-<name>.tar.zst`. ARMSX2 reads it from the file
+name to know which game the pack is for. If a few textures fail, the build keeps going and tells you
 which ones at the end.
 
 ## CLI

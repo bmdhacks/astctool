@@ -11,6 +11,8 @@ use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use tempfile::TempDir;
 
+use regex::Regex;
+
 use crate::{contract, input, kram, ktx, scan, tarzstd};
 
 #[derive(Debug, Clone)]
@@ -27,25 +29,89 @@ pub struct PipelineOptions {
 }
 
 impl PipelineOptions {
-    pub fn output_path(&self) -> PathBuf {
+    /// `output` if given, else [`default_output`].
+    pub fn output_path(&self, serial: Option<&str>) -> PathBuf {
         self.output
             .clone()
-            .unwrap_or_else(|| default_output(&self.input))
+            .unwrap_or_else(|| default_output(&self.input, serial))
     }
 }
 
-pub fn default_output(input: &Path) -> PathBuf {
-    if input.is_dir() {
+/// Next to the input, named after it. The archive holds only `replacements/`,
+/// so the file name is the one place ARMSX2 can read the game's serial from
+/// when no game is running: when the input's name lacks one, `serial` goes in
+/// front ("SLUS-21447-mypack.tar.zst"), or replaces a generic name like
+/// "replacements" outright.
+pub fn default_output(input: &Path, serial: Option<&str>) -> PathBuf {
+    let (dir, stem) = if input.is_dir() {
         let name = input
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "texturepack".into());
-        input
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(format!("{name}.tar.zst"))
+        (input.parent().unwrap_or_else(|| Path::new(".")), name)
     } else {
-        input.with_extension("tar.zst")
+        let name = input
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "texturepack".into());
+        (input.parent().unwrap_or_else(|| Path::new(".")), name)
+    };
+    let name = match serial {
+        Some(serial) if find_serial(&stem).is_none() => {
+            if ["replacements", "textures", "texturepack"]
+                .iter()
+                .any(|g| stem.eq_ignore_ascii_case(g))
+            {
+                serial.to_string()
+            } else {
+                format!("{serial}-{stem}")
+            }
+        }
+        _ => stem,
+    };
+    dir.join(format!("{name}.tar.zst"))
+}
+
+/// A PS2 serial in `text` ("SLUS-21447", "slus_214.47", "SLUS 21447"),
+/// normalized to "SLUS-21447". Same shape ARMSX2's importer looks for.
+pub fn find_serial(text: &str) -> Option<String> {
+    let re = Regex::new(r"(?i)(?:^|[^a-z])([a-z]{4})[-_ ]?(\d{3})[._ ]?(\d{2})(?:$|\D)").unwrap();
+    let c = re.captures(text)?;
+    Some(format!("{}-{}{}", c[1].to_ascii_uppercase(), &c[2], &c[3]))
+}
+
+/// The serial for an input: from the folders the textures sit in (the
+/// innermost first, so a pack zipped as `SLUS-21447/replacements/` is found),
+/// then from the input's own name, then from a folder inside the texture tree
+/// when exactly one serial appears there (`mypack/SLUS-21447/replacements/`).
+fn serial_for(input: &Path, replacements: &Path) -> Option<String> {
+    replacements
+        .ancestors()
+        .filter_map(|p| p.file_name())
+        .find_map(|n| find_serial(&n.to_string_lossy()))
+        .or_else(|| input.file_name().and_then(|n| find_serial(&n.to_string_lossy())))
+        .or_else(|| {
+            let mut found = std::collections::BTreeSet::new();
+            serials_below(replacements, &mut found);
+            if found.len() == 1 {
+                found.into_iter().next()
+            } else {
+                None
+            }
+        })
+}
+
+fn serials_below(dir: &Path, found: &mut std::collections::BTreeSet<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            if let Some(serial) = find_serial(&entry.file_name().to_string_lossy()) {
+                found.insert(serial);
+            }
+            serials_below(&entry.path(), found);
+        }
     }
 }
 
@@ -90,6 +156,7 @@ pub struct ArchiveInfo {
 pub struct Report {
     pub input: String,
     pub replacements_root: String,
+    pub serial: Option<String>,
     pub output: String,
     pub format: String,
     pub quality: i32,
@@ -134,6 +201,17 @@ pub fn run(opts: &PipelineOptions, progress: &mut dyn FnMut(Progress)) -> Result
     progress(Progress::Phase("Finding textures".into()));
     let resolved = input::resolve(&opts.input)?;
     let root = resolved.replacements.clone();
+    let serial = serial_for(&opts.input, &root);
+    match &serial {
+        Some(serial) => note(&mut log, progress, format!("game serial: {serial}")),
+        None => note(
+            &mut log,
+            progress,
+            "no game serial in the input's name or folders; name the pack after the game's \
+             serial (e.g. SLUS-21447.tar.zst) so ARMSX2 knows which game it is for"
+                .to_string(),
+        ),
+    }
     let s = scan::discover(&root)?;
     if s.families.is_empty() {
         bail!("no convertible textures found under {}", root.display());
@@ -301,7 +379,7 @@ pub fn run(opts: &PipelineOptions, progress: &mut dyn FnMut(Progress)) -> Result
 
     // Package.
     progress(Progress::Phase("Packaging".into()));
-    let out_path = opts.output_path();
+    let out_path = opts.output_path(serial.as_deref());
     let stats = tarzstd::write_archive(&out_path, &converted)
         .with_context(|| format!("write archive {}", out_path.display()))?;
 
@@ -325,6 +403,7 @@ pub fn run(opts: &PipelineOptions, progress: &mut dyn FnMut(Progress)) -> Result
     let report = Report {
         input: opts.input.display().to_string(),
         replacements_root: root.display().to_string(),
+        serial: serial.clone(),
         output: out_path.display().to_string(),
         format: opts.format.clone(),
         quality: opts.quality,
@@ -354,4 +433,70 @@ fn rel_str(path: &Path, root: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_serials_in_the_usual_spellings() {
+        assert_eq!(find_serial("SLUS-21447").as_deref(), Some("SLUS-21447"));
+        assert_eq!(find_serial("slus_214.47").as_deref(), Some("SLUS-21447"));
+        assert_eq!(find_serial("GH2 SLES 52187 hd").as_deref(), Some("SLES-52187"));
+        assert_eq!(find_serial("replacements"), None);
+        assert_eq!(find_serial("pack-v123456"), None);
+        assert_eq!(find_serial("XSLUS-21447"), None);
+    }
+
+    #[test]
+    fn serial_comes_from_the_texture_folders() {
+        let root = Path::new("/packs/my-pack/SLUS-21447/replacements");
+        assert_eq!(
+            serial_for(Path::new("/packs/my-pack"), root).as_deref(),
+            Some("SLUS-21447")
+        );
+        assert_eq!(
+            serial_for(Path::new("/dl/SLES-52187.zip"), Path::new("/tmp/x/replacements")).as_deref(),
+            Some("SLES-52187")
+        );
+        assert_eq!(serial_for(Path::new("/dl/pack.zip"), Path::new("/tmp/x")), None);
+    }
+
+    #[test]
+    fn serial_comes_from_one_folder_inside_the_tree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("mypack");
+        std::fs::create_dir_all(root.join("SLUS-21447/replacements/sub")).unwrap();
+        assert_eq!(
+            serial_for(Path::new("/dl/mypack.zip"), &root).as_deref(),
+            Some("SLUS-21447")
+        );
+        // Two games' folders: no way to pick, so no serial.
+        std::fs::create_dir_all(root.join("SLES-52187/replacements")).unwrap();
+        assert_eq!(serial_for(Path::new("/dl/mypack.zip"), &root), None);
+    }
+
+    #[test]
+    fn default_name_carries_the_serial() {
+        let s = Some("SLUS-21447");
+        // A file input is never a dir, so these exercise the file branch.
+        assert_eq!(
+            default_output(Path::new("/dl/gh2-hd.zip"), s),
+            Path::new("/dl/SLUS-21447-gh2-hd.tar.zst")
+        );
+        assert_eq!(
+            default_output(Path::new("/dl/replacements.zip"), s),
+            Path::new("/dl/SLUS-21447.tar.zst")
+        );
+        // Already named for the game: left alone.
+        assert_eq!(
+            default_output(Path::new("/dl/SLUS-21447 hd.zip"), s),
+            Path::new("/dl/SLUS-21447 hd.tar.zst")
+        );
+        assert_eq!(
+            default_output(Path::new("/dl/gh2-hd.zip"), None),
+            Path::new("/dl/gh2-hd.tar.zst")
+        );
+    }
 }

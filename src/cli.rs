@@ -12,7 +12,8 @@ fn usage() -> String {
          \x20   [--format {}] [--quality {}] [--jobs N] [--alpha-exact]\n\
          \n\
          input:  a folder of .png/.dds/.ktx/.ktx2, or a .zip of one\n\
-         output: <name>.tar.zst plus report.json and astctool.log\n\
+         output: <name>.tar.zst (led by the game serial when the input has one)\n\
+         \x20       plus report.json and astctool.log\n\
          --alpha-exact: keep flat PS2 alpha (0x80 = opaque) exact, at some colour cost\n",
         FORMATS.join("|"),
         DEFAULT_QUALITY
