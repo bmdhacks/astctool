@@ -396,6 +396,7 @@ pub fn run() -> i32 {
             .with_min_inner_size([480.0, 520.0])
             .with_drag_and_drop(true)
             .with_title("ASTC Texture Pack Builder"),
+        renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
     match eframe::run_native(
